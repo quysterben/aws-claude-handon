@@ -4,20 +4,26 @@
   "scripts": {
     "build": "tsc",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.266.0",
-    "constructs": "^10.8.1"
+    "constructs": "^10.8.1",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.162",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.3.0",
     "aws-cdk": "^2.1138.0",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
     "esbuild": "^0.28.2",
     "jest": "^30.4.2",
-    "jest-util": "^30.4.1",
     "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
     "typescript": "5.9.3"
