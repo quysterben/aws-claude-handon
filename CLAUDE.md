@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This directory (`aws-claude-handon/`) is a single git repository. `app/` contains two projects that share this repo but are otherwise independent codebases:
 
-- `app/api/` — a Yarn Berry (PnP) project. Backend architecture: AWS Lambda behind API Gateway, provisioned and deployed via AWS CDK (TypeScript). Scaffolded with a working `GET /health` route; see "Current state" below.
+- `app/api/` — a Yarn Berry (`node-modules` linker) project. Backend architecture: AWS Lambda behind API Gateway, provisioned and deployed via AWS CDK (TypeScript). Scaffolded with a working `GET /health` route; see "Current state" below.
 - `app/client/` — a standard, unmodified Create React App project (React 19, `react-scripts` 5.0.1).
 
 Treat these as separate projects for tooling purposes: run commands from inside the relevant subdirectory (`cd app/client` or `cd app/api`), not from the top level. Documentation (specs, implementation plans) lives at the repository root in `docs/`, not nested inside `app/api/` or `app/client/`, since it is one shared repo — see `docs/superpowers/plans/2026-08-25-cdk-scaffold-health-check.md` for the API scaffold's plan.
@@ -33,7 +33,7 @@ Untouched CRA boilerplate: `src/App.js` is the root component, `src/index.js` is
 
 ## `app/api/` — Lambda + API Gateway (AWS CDK)
 
-Uses Yarn 4 with Plug'n'Play (`.pnp.cjs`, `.yarn/`) — use `yarn`, not `npm`, for any dependency installs.
+Uses Yarn 4 with the standard `node-modules` linker (regular `node_modules/`, no PnP) — use `yarn`, not `npm`, for any dependency installs.
 
 ### Architecture
 Serverless backend: **AWS Lambda** functions behind an **API Gateway HTTP API** (v2), provisioned with a TypeScript **AWS CDK** stack (`ApiStack`). No separate design doc exists yet at `docs/superpowers/specs/`; this section is the authoritative summary until one is written:
@@ -46,4 +46,4 @@ Serverless backend: **AWS Lambda** functions behind an **API Gateway HTTP API** 
 ### Current state
 Scaffolded and working: `ApiStack` provisions the HTTP API and a single `GET /health` Lambda route (returns `{"status":"ok"}`). `yarn build`, `yarn test`, and `yarn cdk synth` all pass. See `docs/superpowers/plans/2026-08-25-cdk-scaffold-health-check.md` for how it was built.
 
-`.yarnrc.yml` pins `nodeLinker: pnp` explicitly — this machine's Yarn default is `node-modules`, which silently breaks PnP (deletes `.pnp.cjs`, adds `node_modules`/`package-lock.json`) if the pin is ever removed.
+`.yarnrc.yml` pins `nodeLinker: node-modules` explicitly for reproducibility across machines, regardless of whatever a given machine's Yarn default happens to be.

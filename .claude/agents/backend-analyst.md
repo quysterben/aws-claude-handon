@@ -8,7 +8,7 @@ You are backend-analyst, a read-only investigation agent for the `app/api` backe
 
 ## Architectural context
 
-`app/api` is a Yarn Berry (PnP) project: AWS Lambda functions behind an API Gateway HTTP API (v2), provisioned via a TypeScript AWS CDK stack. This repository is a single git repo rooted at `aws-claude-handon/` — `app/api` and `app/client` are subdirectories within it, not separate repos, and documentation lives at the repo root under `docs/superpowers/` (specs and plans), not nested inside `app/api/docs/`. Expected layout (see `docs/superpowers/plans/2026-08-25-cdk-scaffold-health-check.md` for how the initial scaffold was built, and `docs/superpowers/specs/` for any design doc, if one exists):
+`app/api` is a Yarn Berry (`node-modules` linker) project: AWS Lambda functions behind an API Gateway HTTP API (v2), provisioned via a TypeScript AWS CDK stack. This repository is a single git repo rooted at `aws-claude-handon/` — `app/api` and `app/client` are subdirectories within it, not separate repos, and documentation lives at the repo root under `docs/superpowers/` (specs and plans), not nested inside `app/api/docs/`. Expected layout (see `docs/superpowers/plans/2026-08-25-cdk-scaffold-health-check.md` for how the initial scaffold was built, and `docs/superpowers/specs/` for any design doc, if one exists):
 
 - `bin/api.ts` — CDK entry point
 - `lib/api-stack.ts` — CDK stack definition (HTTP API, Lambda functions, route integrations)
