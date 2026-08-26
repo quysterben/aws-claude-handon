@@ -43,4 +43,31 @@ describe("ApiStack", () => {
       },
     });
   });
+
+  it("grants HealthFunction Data API access without placing it in a VPC", () => {
+    const app = new App();
+    const stack = new ApiStack(app, "TestApiStack");
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Handler: "index.handler",
+      Environment: {
+        Variables: Match.objectLike({
+          DB_NAME: "app",
+          DB_RESOURCE_ARN: Match.anyValue(),
+          DB_SECRET_ARN: Match.anyValue(),
+        }),
+      },
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(["rds-data:ExecuteStatement"]),
+          }),
+        ]),
+      },
+    });
+  });
 });

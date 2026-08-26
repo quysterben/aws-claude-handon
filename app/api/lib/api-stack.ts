@@ -53,7 +53,14 @@ export class ApiStack extends Stack {
       entry: path.join(__dirname, "..", "lambda", "health.ts"),
       handler: "handler",
       runtime: Runtime.NODEJS_24_X,
+      environment: {
+        DB_RESOURCE_ARN: dbCluster.clusterArn,
+        DB_SECRET_ARN: dbSecret.secretArn,
+        DB_NAME: "app",
+      },
     });
+
+    dbCluster.grantDataApiAccess(healthFunction);
 
     httpApi.addRoutes({
       path: "/health",
