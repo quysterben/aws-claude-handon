@@ -36,14 +36,15 @@ Untouched CRA boilerplate: `src/App.js` is the root component, `src/index.js` is
 Uses Yarn 4 with the standard `node-modules` linker (regular `node_modules/`, no PnP) — use `yarn`, not `npm`, for any dependency installs.
 
 ### Architecture
-Serverless backend: **AWS Lambda** functions behind an **API Gateway HTTP API** (v2), provisioned with a TypeScript **AWS CDK** stack (`ApiStack`). No separate design doc exists yet at `docs/superpowers/specs/`; this section is the authoritative summary until one is written:
+Serverless backend: **AWS Lambda** functions behind an **API Gateway HTTP API** (v2), provisioned with a TypeScript **AWS CDK** stack (`ApiStack`). Design docs live at `docs/superpowers/specs/` (`2026-08-25-drizzle-migration-setup-design.md` and `2026-08-25-aurora-serverless-lambda-connectivity-design.md`); this section is a summary, not a replacement for them:
 
 - One CDK stack provisions the HTTP API, one Lambda per route (`NodejsFunction` from `aws-cdk-lib/aws-lambda-nodejs`, esbuild-bundled automatically at synth/deploy — no separate build step), and route integrations (`HttpLambdaIntegration`).
+- `ApiStack` also provisions an isolated-subnet VPC and an Aurora Serverless v2 (PostgreSQL) cluster with RDS Data API enabled. The `HealthFunction` (and future API Lambdas) connect to the database via Data API and are not placed in the VPC at all. A separate `MigrateFunction` runs inside the VPC with a direct postgres-js connection to apply Drizzle migrations, and is invoked manually via `yarn db:migrate:remote` — never automatically on `cdk deploy`.
 - Layout: `bin/api.ts` (CDK entry), `lib/api-stack.ts` (stack def), `lambda/*.ts` (handlers), `test/*.test.ts` (CDK assertions via `aws-cdk-lib/assertions`), `cdk.json`.
 - `package.json` scripts: `build` (`tsc`), `test` (`jest`), `cdk` (`cdk`).
 - Deploys are manual and user-run (`yarn cdk bootstrap`, then `yarn cdk deploy`) — the assistant should not run these against a real AWS account; they are billable and hard to reverse. `yarn cdk synth` is local-only (no AWS calls) and safe to run freely.
 
 ### Current state
-Scaffolded and working: `ApiStack` provisions the HTTP API and a single `GET /health` Lambda route (returns `{"status":"ok"}`). `yarn build`, `yarn test`, and `yarn cdk synth` all pass. See `docs/superpowers/plans/2026-08-25-cdk-scaffold-health-check.md` for how it was built.
+Scaffolded and working: `ApiStack` provisions the HTTP API and a single `GET /health` Lambda route, which returns `{"status":"ok","db":"ok"|"unreachable"}` — the `db` field reflects a live Data API check against Aurora. `yarn build`, `yarn test`, and `yarn cdk synth` all pass. See `docs/superpowers/plans/2026-08-25-cdk-scaffold-health-check.md` for how the initial scaffold was built.
 
 `.yarnrc.yml` pins `nodeLinker: node-modules` explicitly for reproducibility across machines, regardless of whatever a given machine's Yarn default happens to be.

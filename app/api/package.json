@@ -6,7 +6,6 @@
     "test": "jest",
     "cdk": "cdk",
     "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio",
     "db:migrate:remote": "aws lambda invoke --function-name api-migrate --cli-binary-format raw-in-base64-out --payload '{}' /tmp/api-migrate-output.json && cat /tmp/api-migrate-output.json"
   },
   "dependencies": {

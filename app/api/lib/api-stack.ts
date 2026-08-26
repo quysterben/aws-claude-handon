@@ -53,6 +53,7 @@ export class ApiStack extends Stack {
       entry: path.join(__dirname, "..", "lambda", "health.ts"),
       handler: "handler",
       runtime: Runtime.NODEJS_24_X,
+      timeout: Duration.seconds(25),
       environment: {
         DB_RESOURCE_ARN: dbCluster.clusterArn,
         DB_SECRET_ARN: dbSecret.secretArn,
@@ -67,7 +68,7 @@ export class ApiStack extends Stack {
       handler: "handler",
       runtime: Runtime.NODEJS_24_X,
       functionName: "api-migrate",
-      timeout: Duration.seconds(60),
+      timeout: Duration.minutes(5),
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       environment: {
@@ -110,5 +111,11 @@ export class ApiStack extends Stack {
     });
 
     new CfnOutput(this, "HttpApiUrl", { value: httpApi.apiEndpoint });
+    new CfnOutput(this, "DbClusterEndpoint", {
+      value: dbCluster.clusterEndpoint.hostname,
+    });
+    new CfnOutput(this, "MigrateFunctionName", {
+      value: migrateFunction.functionName,
+    });
   }
 }

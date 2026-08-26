@@ -58,6 +58,7 @@ describe("ApiStack", () => {
           DB_SECRET_ARN: Match.anyValue(),
         }),
       },
+      VpcConfig: Match.absent(),
     });
 
     template.hasResourceProperties("AWS::IAM::Policy", {
