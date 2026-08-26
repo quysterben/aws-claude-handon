@@ -9,11 +9,9 @@ describe("ApiStack", () => {
     const template = Template.fromStack(stack);
 
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 1);
-    template.resourceCountIs("AWS::ApiGatewayV2::Route", 1);
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /health",
     });
-    template.resourceCountIs("AWS::Lambda::Function", 2);
   });
 
   it("provisions an Aurora Serverless v2 Postgres cluster with Data API enabled, in an isolated-subnet VPC with no NAT gateways", () => {
@@ -99,6 +97,82 @@ describe("ApiStack", () => {
       Description: "Allow migration Lambda to reach Aurora",
       FromPort: Match.anyValue(),
       ToPort: Match.anyValue(),
+    });
+  });
+
+  it("provisions a Cognito User Pool with a secret-enabled app client supporting USER_PASSWORD_AUTH and a custom role attribute", () => {
+    const app = new App();
+    const stack = new ApiStack(app, "TestApiStack");
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::Cognito::UserPool", {
+      AdminCreateUserConfig: Match.objectLike({
+        AllowAdminCreateUserOnly: true,
+      }),
+      Schema: Match.arrayWith([
+        Match.objectLike({
+          AttributeDataType: "String",
+          Name: "role",
+        }),
+      ]),
+    });
+
+    template.hasResourceProperties("AWS::Cognito::UserPoolClient", {
+      GenerateSecret: true,
+      ExplicitAuthFlows: Match.arrayWith(["ALLOW_USER_PASSWORD_AUTH"]),
+    });
+  });
+
+  it("wires POST /auth/register and POST /auth/login to dedicated Lambdas outside the VPC", () => {
+    const app = new App();
+    const stack = new ApiStack(app, "TestApiStack");
+    const template = Template.fromStack(stack);
+
+    // 4 handler Lambdas (Health, Migrate, Register, Login) + 1 CDK-generated
+    // AwsCustomResource singleton provider Lambda, created because
+    // UserPoolClient.userPoolClientSecret reads the secret via a
+    // DescribeUserPoolClient custom resource (CloudFormation does not expose
+    // ClientSecret as a Fn::GetAtt attribute).
+    template.resourceCountIs("AWS::Lambda::Function", 5);
+
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /auth/register",
+    });
+    template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
+      RouteKey: "POST /auth/login",
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith([
+              "cognito-idp:AdminCreateUser",
+              "cognito-idp:AdminSetUserPassword",
+            ]),
+          }),
+        ]),
+      },
+    });
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: Match.objectLike({
+        Variables: Match.objectLike({
+          COGNITO_USER_POOL_ID: Match.anyValue(),
+          DB_RESOURCE_ARN: Match.anyValue(),
+        }),
+      }),
+      VpcConfig: Match.absent(),
+    });
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: Match.objectLike({
+        Variables: Match.objectLike({
+          COGNITO_CLIENT_ID: Match.anyValue(),
+          COGNITO_CLIENT_SECRET: Match.anyValue(),
+        }),
+      }),
+      VpcConfig: Match.absent(),
     });
   });
 });
