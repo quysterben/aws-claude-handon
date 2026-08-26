@@ -135,6 +135,11 @@ describe("ApiStack", () => {
     // ClientSecret as a Fn::GetAtt attribute).
     template.resourceCountIs("AWS::Lambda::Function", 5);
 
+    // Replaces an earlier resourceCountIs("AWS::ApiGatewayV2::Route", 1),
+    // which went stale once /auth/register and /auth/login were added
+    // alongside the original /health route.
+    template.resourceCountIs("AWS::ApiGatewayV2::Route", 3);
+
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "POST /auth/register",
     });
@@ -150,6 +155,9 @@ describe("ApiStack", () => {
               "cognito-idp:AdminCreateUser",
               "cognito-idp:AdminSetUserPassword",
             ]),
+            Resource: {
+              "Fn::GetAtt": [Match.stringLikeRegexp("^UserPool"), "Arn"],
+            },
           }),
         ]),
       },
@@ -174,5 +182,51 @@ describe("ApiStack", () => {
       }),
       VpcConfig: Match.absent(),
     });
+  });
+
+  it("LoginFunction has no Cognito admin IAM policy and no Data API grant", () => {
+    const app = new App();
+    const stack = new ApiStack(app, "TestApiStack");
+    const template = Template.fromStack(stack);
+
+    // Find LoginFunction's logical id and its role's logical id, then confirm
+    // no IAM::Policy attached to that role grants either the Cognito admin
+    // actions (Register's grant) or the Data API action (Health/Register's
+    // grant) — those belong to other functions' roles, not Login's.
+    const functions = template.findResources("AWS::Lambda::Function");
+    const loginFunctionId = Object.keys(functions).find((id) =>
+      id.startsWith("LoginFunction"),
+    );
+    expect(loginFunctionId).toBeDefined();
+
+    const loginRoleRef =
+      functions[loginFunctionId!].Properties.Role["Fn::GetAtt"][0];
+
+    const policies = template.findResources("AWS::IAM::Policy");
+    for (const policy of Object.values(policies)) {
+      const roles: unknown[] = policy.Properties.Roles ?? [];
+      const attachedToLogin = roles.some(
+        (role) =>
+          typeof role === "object" &&
+          role !== null &&
+          "Ref" in (role as Record<string, unknown>) &&
+          (role as Record<string, unknown>).Ref === loginRoleRef,
+      );
+      if (!attachedToLogin) continue;
+
+      const statements: Array<{ Action?: unknown }> =
+        policy.Properties.PolicyDocument.Statement;
+      for (const statement of statements) {
+        const actions = Array.isArray(statement.Action)
+          ? statement.Action
+          : [statement.Action];
+        expect(actions).not.toEqual(
+          expect.arrayContaining(["cognito-idp:AdminCreateUser"]),
+        );
+        expect(actions).not.toEqual(
+          expect.arrayContaining(["rds-data:ExecuteStatement"]),
+        );
+      }
+    }
   });
 });

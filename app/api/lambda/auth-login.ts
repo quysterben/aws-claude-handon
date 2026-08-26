@@ -37,13 +37,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   if (typeof email !== "string" || email.length === 0) {
     return jsonResponse(400, { message: "email is required" });
   }
+  const normalizedEmail = email.trim().toLowerCase();
   if (typeof password !== "string" || password.length === 0) {
     return jsonResponse(400, { message: "password is required" });
   }
 
   const clientId = requireEnv("COGNITO_CLIENT_ID");
   const clientSecret = requireEnv("COGNITO_CLIENT_SECRET");
-  const secretHash = computeSecretHash(email, clientId, clientSecret);
+  const secretHash = computeSecretHash(normalizedEmail, clientId, clientSecret);
 
   try {
     const result = await cognito.send(
@@ -51,7 +52,7 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
         AuthFlow: "USER_PASSWORD_AUTH",
         ClientId: clientId,
         AuthParameters: {
-          USERNAME: email,
+          USERNAME: normalizedEmail,
           PASSWORD: password,
           SECRET_HASH: secretHash,
         },

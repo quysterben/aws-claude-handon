@@ -1,8 +1,10 @@
 import type { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import {
   AdminCreateUserCommand,
+  AdminDeleteUserCommand,
   AdminSetUserPasswordCommand,
   CognitoIdentityProviderClient,
+  InvalidPasswordException,
   UsernameExistsException,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { getDb, withResumeRetry } from "../db/client";
@@ -11,7 +13,6 @@ import { users } from "../db/schema";
 const cognito = new CognitoIdentityProviderClient({});
 
 type Role = "ADMIN" | "USER";
-const VALID_ROLES: Role[] = ["ADMIN", "USER"];
 
 function jsonResponse(statusCode: number, body: unknown) {
   return {
@@ -34,7 +35,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     email?: unknown;
     password?: unknown;
     name?: unknown;
-    role?: unknown;
   };
   try {
     payload = JSON.parse(event.body ?? "{}");
@@ -42,21 +42,19 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     return jsonResponse(400, { message: "Invalid JSON body" });
   }
 
-  const { email, password, name, role } = payload;
+  const { email, password, name } = payload;
 
   if (typeof email !== "string" || email.length === 0) {
     return jsonResponse(400, { message: "email is required" });
   }
+  const normalizedEmail = email.trim().toLowerCase();
   if (typeof password !== "string" || password.length === 0) {
     return jsonResponse(400, { message: "password is required" });
   }
   if (typeof name !== "string" || name.length === 0) {
     return jsonResponse(400, { message: "name is required" });
   }
-  const resolvedRole: Role = role === undefined ? "USER" : (role as Role);
-  if (!VALID_ROLES.includes(resolvedRole)) {
-    return jsonResponse(400, { message: "role must be ADMIN or USER" });
-  }
+  const resolvedRole: Role = "USER";
 
   const userPoolId = requireEnv("COGNITO_USER_POOL_ID");
 
@@ -65,10 +63,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     const createResult = await cognito.send(
       new AdminCreateUserCommand({
         UserPoolId: userPoolId,
-        Username: email,
+        Username: normalizedEmail,
         MessageAction: "SUPPRESS",
         UserAttributes: [
-          { Name: "email", Value: email },
+          { Name: "email", Value: normalizedEmail },
           { Name: "email_verified", Value: "true" },
           { Name: "name", Value: name },
           { Name: "custom:role", Value: resolvedRole },
@@ -83,15 +81,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
       throw new Error("Cognito did not return a sub attribute");
     }
     sub = subAttribute.Value;
-
-    await cognito.send(
-      new AdminSetUserPasswordCommand({
-        UserPoolId: userPoolId,
-        Username: email,
-        Password: password,
-        Permanent: true,
-      }),
-    );
   } catch (error) {
     if (error instanceof UsernameExistsException) {
       return jsonResponse(409, { message: "email is already registered" });
@@ -101,10 +90,44 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   }
 
   try {
+    await cognito.send(
+      new AdminSetUserPasswordCommand({
+        UserPoolId: userPoolId,
+        Username: normalizedEmail,
+        Password: password,
+        Permanent: true,
+      }),
+    );
+  } catch (error) {
+    try {
+      await cognito.send(
+        new AdminDeleteUserCommand({
+          UserPoolId: userPoolId,
+          Username: normalizedEmail,
+        }),
+      );
+    } catch (cleanupError) {
+      console.error(
+        "Failed to roll back Cognito user after AdminSetUserPassword failure — manual cleanup required",
+        { sub, cleanupError },
+      );
+    }
+
+    if (error instanceof InvalidPasswordException) {
+      return jsonResponse(400, {
+        message:
+          "password does not meet the required policy (min 8 characters, with uppercase, lowercase, a digit, and a symbol)",
+      });
+    }
+    console.error("Cognito set password failed", error);
+    return jsonResponse(500, { message: "registration failed" });
+  }
+
+  try {
     await withResumeRetry(async () => {
       await getDb()
         .insert(users)
-        .values({ id: sub, email, name, role: resolvedRole });
+        .values({ id: sub, email: normalizedEmail, name, role: resolvedRole });
     });
   } catch (error) {
     console.error("Postgres profile insert failed after Cognito create", {
@@ -114,5 +137,10 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     return jsonResponse(500, { message: "registration failed" });
   }
 
-  return jsonResponse(201, { id: sub, email, name, role: resolvedRole });
+  return jsonResponse(201, {
+    id: sub,
+    email: normalizedEmail,
+    name,
+    role: resolvedRole,
+  });
 };

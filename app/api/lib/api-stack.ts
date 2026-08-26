@@ -49,6 +49,7 @@ export class ApiStack extends Stack {
 
     const userPool = new cognito.UserPool(this, "UserPool", {
       selfSignUpEnabled: false,
+      signInCaseSensitive: false,
       standardAttributes: {
         fullname: { required: false, mutable: true },
       },
@@ -61,6 +62,7 @@ export class ApiStack extends Stack {
     const userPoolClient = userPool.addClient("UserPoolClient", {
       generateSecret: true,
       authFlows: { userPassword: true },
+      disableOAuth: true,
     });
 
     const httpApi = new HttpApi(this, "HttpApi", {
@@ -92,6 +94,9 @@ export class ApiStack extends Stack {
         DB_SECRET_ARN: dbSecret.secretArn,
         DB_NAME: "app",
       },
+      bundling: {
+        externalModules: [],
+      },
     });
 
     dbCluster.grantDataApiAccess(registerFunction);
@@ -113,6 +118,9 @@ export class ApiStack extends Stack {
       environment: {
         COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
         COGNITO_CLIENT_SECRET: userPoolClient.userPoolClientSecret.unsafeUnwrap(),
+      },
+      bundling: {
+        externalModules: [],
       },
     });
 

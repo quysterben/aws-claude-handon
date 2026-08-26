@@ -27,7 +27,9 @@ Deploys are manual and user-run — none of these steps run automatically.
    ```bash
    yarn cdk deploy
    ```
-   Provisions the VPC (isolated subnets, no NAT), the Aurora Serverless v2 cluster (Data API enabled, `minCapacity: 0` auto-pause), the Secrets Manager VPC endpoint, `HealthFunction`, `MigrateFunction`, and the HTTP API. On success, CDK prints three outputs: `HttpApiUrl` (the API base URL), `DbClusterEndpoint` (informational), and `MigrateFunctionName` (`api-migrate`).
+   Provisions the VPC (isolated subnets, no NAT), the Aurora Serverless v2 cluster (Data API enabled, `minCapacity: 0` auto-pause), the Secrets Manager VPC endpoint, the Cognito User Pool + App Client, `HealthFunction`, `RegisterFunction`, `LoginFunction`, `MigrateFunction`, and the HTTP API. On success, CDK prints five outputs: `HttpApiUrl` (the API base URL), `DbClusterEndpoint` (informational), `MigrateFunctionName` (`api-migrate`), `UserPoolId`, and `UserPoolClientId`.
+
+   **Warning:** do not call `POST /auth/register` yet. Until migrations are applied (step 4), the `users` table doesn't have the shape `RegisterFunction` expects, so a register call will create the Cognito user successfully and then fail the Postgres profile insert — leaving an orphaned Cognito user with no matching Postgres row. That orphaned user can still log in via `POST /auth/login` (which never touches Postgres), so the inconsistency won't be visible from login alone. Always apply migrations (step 4) before exercising the auth endpoints.
 
 4. **Apply migrations (manual — never automatic):**
    ```bash
@@ -39,6 +41,16 @@ Deploys are manual and user-run — none of these steps run automatically.
    ```bash
    curl <HttpApiUrl>/health
    # expect {"status":"ok","db":"ok"} (or "unreachable" if the cluster is still resuming from pause — retry)
+
+   curl -X POST <HttpApiUrl>/auth/register \
+     -H 'content-type: application/json' \
+     -d '{"email":"user@example.com","password":"Sup3r$ecret","name":"Ada Lovelace"}'
+   # expect 201 with {"id":"<cognito-sub>","email":"user@example.com","name":"Ada Lovelace","role":"USER"}
+
+   curl -X POST <HttpApiUrl>/auth/login \
+     -H 'content-type: application/json' \
+     -d '{"email":"user@example.com","password":"Sup3r$ecret"}'
+   # expect 200 with {"idToken":"...","accessToken":"...","refreshToken":"...","expiresIn":...}
    ```
 
 6. **Tear down when done:**
