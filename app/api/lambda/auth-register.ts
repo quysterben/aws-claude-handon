@@ -7,8 +7,9 @@ import {
   InvalidPasswordException,
   UsernameExistsException,
 } from "@aws-sdk/client-cognito-identity-provider";
+import { sql } from "drizzle-orm";
 import { getDb, withResumeRetry } from "../db/client";
-import { users } from "../db/schema";
+import { users, userRoleEnum } from "../db/schema";
 import { jsonResponse, requireEnv } from "./helpers/http";
 
 const cognito = new CognitoIdentityProviderClient({});
@@ -112,7 +113,12 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     await withResumeRetry(async () => {
       await getDb()
         .insert(users)
-        .values({ id: sub, email: normalizedEmail, name, role: resolvedRole });
+        .values({
+          id: sub,
+          email: normalizedEmail,
+          name,
+          role: sql`${resolvedRole}::${sql.raw(userRoleEnum.enumName)}`,
+        });
     });
   } catch (error) {
     console.error("Postgres profile insert failed after Cognito create", {
