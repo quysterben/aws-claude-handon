@@ -13,7 +13,7 @@ describe("ApiStack", () => {
     template.hasResourceProperties("AWS::ApiGatewayV2::Route", {
       RouteKey: "GET /health",
     });
-    template.resourceCountIs("AWS::Lambda::Function", 1);
+    template.resourceCountIs("AWS::Lambda::Function", 2);
   });
 
   it("provisions an Aurora Serverless v2 Postgres cluster with Data API enabled, in an isolated-subnet VPC with no NAT gateways", () => {
@@ -68,6 +68,36 @@ describe("ApiStack", () => {
           }),
         ]),
       },
+    });
+  });
+
+  it("runs the migration Lambda inside the Aurora VPC with a fixed name and Secrets Manager read access", () => {
+    const app = new App();
+    const stack = new ApiStack(app, "TestApiStack");
+    const template = Template.fromStack(stack);
+
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: "api-migrate",
+      VpcConfig: Match.objectLike({
+        SubnetIds: Match.anyValue(),
+      }),
+    });
+
+    template.hasResourceProperties("AWS::IAM::Policy", {
+      PolicyDocument: {
+        Statement: Match.arrayWith([
+          Match.objectLike({
+            Action: Match.arrayWith(["secretsmanager:GetSecretValue"]),
+          }),
+        ]),
+      },
+    });
+
+    template.hasResourceProperties("AWS::EC2::SecurityGroupIngress", {
+      IpProtocol: "tcp",
+      Description: "Allow migration Lambda to reach Aurora",
+      FromPort: Match.anyValue(),
+      ToPort: Match.anyValue(),
     });
   });
 });

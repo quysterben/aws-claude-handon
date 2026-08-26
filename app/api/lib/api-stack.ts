@@ -62,6 +62,44 @@ export class ApiStack extends Stack {
 
     dbCluster.grantDataApiAccess(healthFunction);
 
+    const migrateFunction = new NodejsFunction(this, "MigrateFunction", {
+      entry: path.join(__dirname, "..", "lambda", "migrate.ts"),
+      handler: "handler",
+      runtime: Runtime.NODEJS_24_X,
+      functionName: "api-migrate",
+      timeout: Duration.seconds(60),
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+      environment: {
+        DB_HOST: dbCluster.clusterEndpoint.hostname,
+        DB_PORT: dbCluster.clusterEndpoint.port.toString(),
+        DB_NAME: "app",
+        DB_SECRET_ARN: dbSecret.secretArn,
+      },
+      bundling: {
+        commandHooks: {
+          beforeBundling(_inputDir: string, _outputDir: string): string[] {
+            return [];
+          },
+          afterBundling(inputDir: string, outputDir: string): string[] {
+            return [
+              `mkdir -p ${outputDir}/db`,
+              `cp -r ${inputDir}/db/migrations ${outputDir}/db/migrations`,
+            ];
+          },
+          beforeInstall(_inputDir: string, _outputDir: string): string[] {
+            return [];
+          },
+        },
+      },
+    });
+
+    dbSecret.grantRead(migrateFunction);
+    dbCluster.connections.allowDefaultPortFrom(
+      migrateFunction,
+      "Allow migration Lambda to reach Aurora",
+    );
+
     httpApi.addRoutes({
       path: "/health",
       methods: [HttpMethod.GET],
