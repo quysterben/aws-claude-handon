@@ -1,6 +1,7 @@
 import type { APIGatewayProxyHandlerV2 } from "aws-lambda";
 import { sql } from "drizzle-orm";
 import { getDb, withResumeRetry } from "../db/client";
+import { jsonResponse } from "./helpers/http";
 
 export const handler: APIGatewayProxyHandlerV2 = async () => {
   let db: "ok" | "unreachable" = "ok";
@@ -10,9 +11,5 @@ export const handler: APIGatewayProxyHandlerV2 = async () => {
     db = "unreachable";
   }
 
-  return {
-    statusCode: 200,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ status: "ok", db }),
-  };
+  return jsonResponse(200, { status: "ok", db });
 };
