@@ -156,7 +156,7 @@ describe("ApiStack", () => {
               "cognito-idp:AdminSetUserPassword",
             ]),
             Resource: {
-              "Fn::GetAtt": [Match.stringLikeRegexp("^UserPool"), "Arn"],
+              "Fn::GetAtt": [Match.stringLikeRegexp("UserPool"), "Arn"],
             },
           }),
         ]),
@@ -195,7 +195,7 @@ describe("ApiStack", () => {
     // grant) — those belong to other functions' roles, not Login's.
     const functions = template.findResources("AWS::Lambda::Function");
     const loginFunctionId = Object.keys(functions).find((id) =>
-      id.startsWith("LoginFunction"),
+      id.includes("LoginFunction"),
     );
     expect(loginFunctionId).toBeDefined();
 

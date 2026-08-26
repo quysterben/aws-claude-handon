@@ -1,4 +1,4 @@
-import { computeSecretHash } from "../lambda/cognito-secret-hash";
+import { computeSecretHash } from "../lambda/helpers/cognito-secret-hash";
 
 describe("computeSecretHash", () => {
   it("matches the known HMAC-SHA256(username + clientId, clientSecret) base64 value", () => {

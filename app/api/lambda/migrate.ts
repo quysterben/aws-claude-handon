@@ -6,6 +6,7 @@ import {
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
+import { requireEnv } from "./helpers/http";
 
 interface DbSecret {
   username: string;
@@ -55,12 +56,4 @@ async function fetchSecret(secretArn: string): Promise<DbSecret> {
     throw new Error(`Secret ${secretArn} has no SecretString`);
   }
   return JSON.parse(response.SecretString) as DbSecret;
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is not set`);
-  }
-  return value;
 }

@@ -5,25 +5,10 @@ import {
   NotAuthorizedException,
   UserNotFoundException,
 } from "@aws-sdk/client-cognito-identity-provider";
-import { computeSecretHash } from "./cognito-secret-hash";
+import { computeSecretHash } from "./helpers/cognito-secret-hash";
+import { jsonResponse, requireEnv } from "./helpers/http";
 
 const cognito = new CognitoIdentityProviderClient({});
-
-function jsonResponse(statusCode: number, body: unknown) {
-  return {
-    statusCode,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  };
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`${name} is not set`);
-  }
-  return value;
-}
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   let payload: { email?: unknown; password?: unknown };
