@@ -6,6 +6,8 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as rds from "aws-cdk-lib/aws-rds";
+import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as iam from "aws-cdk-lib/aws-iam";
 import * as path from "path";
 
 export class ApiStack extends Stack {
@@ -45,6 +47,24 @@ export class ApiStack extends Stack {
 
     const dbSecret = dbCluster.secret!;
 
+    const userPool = new cognito.UserPool(this, "UserPool", {
+      selfSignUpEnabled: false,
+      signInCaseSensitive: false,
+      standardAttributes: {
+        fullname: { required: false, mutable: true },
+      },
+      customAttributes: {
+        role: new cognito.StringAttribute({ mutable: true }),
+      },
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
+    const userPoolClient = userPool.addClient("UserPoolClient", {
+      generateSecret: true,
+      authFlows: { userPassword: true },
+      disableOAuth: true,
+    });
+
     const httpApi = new HttpApi(this, "HttpApi", {
       apiName: "api",
     });
@@ -62,6 +82,47 @@ export class ApiStack extends Stack {
     });
 
     dbCluster.grantDataApiAccess(healthFunction);
+
+    const registerFunction = new NodejsFunction(this, "RegisterFunction", {
+      entry: path.join(__dirname, "..", "lambda", "auth-register.ts"),
+      handler: "handler",
+      runtime: Runtime.NODEJS_24_X,
+      timeout: Duration.seconds(25),
+      environment: {
+        COGNITO_USER_POOL_ID: userPool.userPoolId,
+        DB_RESOURCE_ARN: dbCluster.clusterArn,
+        DB_SECRET_ARN: dbSecret.secretArn,
+        DB_NAME: "app",
+      },
+      bundling: {
+        externalModules: [],
+      },
+    });
+
+    dbCluster.grantDataApiAccess(registerFunction);
+    registerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: [
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminSetUserPassword",
+        ],
+        resources: [userPool.userPoolArn],
+      }),
+    );
+
+    const loginFunction = new NodejsFunction(this, "LoginFunction", {
+      entry: path.join(__dirname, "..", "lambda", "auth-login.ts"),
+      handler: "handler",
+      runtime: Runtime.NODEJS_24_X,
+      timeout: Duration.seconds(25),
+      environment: {
+        COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        COGNITO_CLIENT_SECRET: userPoolClient.userPoolClientSecret.unsafeUnwrap(),
+      },
+      bundling: {
+        externalModules: [],
+      },
+    });
 
     const migrateFunction = new NodejsFunction(this, "MigrateFunction", {
       entry: path.join(__dirname, "..", "lambda", "migrate.ts"),
@@ -110,12 +171,31 @@ export class ApiStack extends Stack {
       ),
     });
 
+    httpApi.addRoutes({
+      path: "/auth/register",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration(
+        "RegisterIntegration",
+        registerFunction,
+      ),
+    });
+
+    httpApi.addRoutes({
+      path: "/auth/login",
+      methods: [HttpMethod.POST],
+      integration: new HttpLambdaIntegration("LoginIntegration", loginFunction),
+    });
+
     new CfnOutput(this, "HttpApiUrl", { value: httpApi.apiEndpoint });
     new CfnOutput(this, "DbClusterEndpoint", {
       value: dbCluster.clusterEndpoint.hostname,
     });
     new CfnOutput(this, "MigrateFunctionName", {
       value: migrateFunction.functionName,
+    });
+    new CfnOutput(this, "UserPoolId", { value: userPool.userPoolId });
+    new CfnOutput(this, "UserPoolClientId", {
+      value: userPoolClient.userPoolClientId,
     });
   }
 }

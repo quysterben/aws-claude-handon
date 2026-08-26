@@ -9,6 +9,7 @@
     "db:migrate:remote": "aws lambda invoke --function-name api-migrate --cli-binary-format raw-in-base64-out --payload '{}' /tmp/api-migrate-output.json && cat /tmp/api-migrate-output.json"
   },
   "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1117.0",
     "@aws-sdk/client-rds-data": "^3.1117.0",
     "@aws-sdk/client-secrets-manager": "^3.1117.0",
     "aws-cdk-lib": "^2.266.0",
