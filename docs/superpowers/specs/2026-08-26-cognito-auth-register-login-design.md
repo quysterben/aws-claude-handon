@@ -22,7 +22,7 @@ Add user authentication to `app/api` backed by **Amazon Cognito** as the identit
 - **Client secret delivery: plain Lambda environment variable**, read from `userPoolClient.userPoolClientSecret` (CDK resolves this via a `DescribeUserPoolClient` custom resource at deploy time) and passed directly into `LoginFunction`'s `environment`. This differs from how the Aurora DB secret is handled (Secrets Manager + `grantRead`) — the trade-off is explicit here: the value ends up in the Lambda's plaintext configuration (visible via `GetFunctionConfiguration` to anyone with that IAM permission, and in the CloudFormation template). Accepted for this project's scale; moving it to Secrets Manager is a future hardening step, not done now.
 - **Register writes to both systems: Cognito first, then Postgres.** `RegisterFunction` calls Cognito (`AdminCreateUser` + `AdminSetUserPassword`), reads the resulting `sub` from the `AdminCreateUser` response's `User.Attributes`, then inserts a row into Postgres `users` (`id`, `email`, `name`, `role`) via the existing Data API `getDb()` client. If the Postgres insert fails after Cognito succeeded, the error is surfaced to the caller as a 500 and logged — no compensating transaction/rollback of the Cognito user. Acceptable at this project's scale; not a system users depend on for correctness guarantees yet.
 - **`LoginFunction` never touches Postgres.** Login only needs to authenticate against Cognito and return tokens; the JWT itself carries `sub` and any custom claims a future protected route would need, so there's no reason to query the `users` shadow table on every login.
-- **Register API fields:** `{ email, password, name, role? }` — `role` optional, defaults to `"USER"`, restricted to `"ADMIN" | "USER"` (matches the existing `user_role` enum). `name` is required (existing schema has it `NOT NULL`).
+- **Register API fields:** `{ email, password, name }` — no `role` field is accepted from the client. `role` is always hardcoded server-side to `"USER"`; any `role` present in the request body is silently ignored. This was a deliberate hardening after an earlier draft accepted a client-supplied `role`, which would have let any caller self-register as `"ADMIN"`. Provisioning an `ADMIN` account is out of scope for this design (see Out of scope). `name` is required (existing schema has it `NOT NULL`).
 
 ## Components
 
@@ -37,7 +37,7 @@ Add user authentication to `app/api` backed by **Amazon Cognito** as the identit
 
 ### `lambda/auth-register.ts` (new)
 
-- Parses/validates the JSON body: `email` and `password` required (400 if missing), `name` required (400 if missing), `role` optional (`"ADMIN"|"USER"`, default `"USER"`; 400 if an invalid value is supplied).
+- Parses/validates the JSON body: `email` and `password` required (400 if missing), `name` required (400 if missing). `role` is not read from the request body at all — it's hardcoded to `"USER"` in the handler, so any client-supplied `role` is silently ignored rather than validated.
 - `AdminCreateUserCommand({ UserPoolId, Username: email, UserAttributes: [email, email_verified=true, name, custom:role], MessageAction: "SUPPRESS", TemporaryPassword: <random> })`.
 - `AdminSetUserPasswordCommand({ UserPoolId, Username: email, Password: <caller's password>, Permanent: true })` — finalizes the account into `CONFIRMED`, usable by `POST /auth/login` immediately.
 - Reads `sub` from the `AdminCreateUserCommand` response's `User.Attributes`, inserts `{ id: sub, email, name, role }` into Postgres `users` via `getDb()` + `withResumeRetry()` (both from `db/client.ts`, reused as-is).
@@ -70,7 +70,7 @@ Add user authentication to `app/api` backed by **Amazon Cognito** as the identit
 
 ## Data flow
 
-1. **Register:** client `POST /auth/register` with `{ email, password, name, role? }` → `RegisterFunction` creates the user in Cognito (admin-created, password set as permanent, `CONFIRMED` status) → reads `sub` from the Cognito response → inserts the shadow row into Postgres `users` via Data API → returns `201` with the created profile (no tokens).
+1. **Register:** client `POST /auth/register` with `{ email, password, name }` (any `role` field is ignored) → `RegisterFunction` creates the user in Cognito (admin-created, password set as permanent, `CONFIRMED` status, role hardcoded to `"USER"`) → reads `sub` from the Cognito response → inserts the shadow row into Postgres `users` via Data API → returns `201` with the created profile (no tokens).
 2. **Login:** client `POST /auth/login` with `{ email, password }` → `LoginFunction` computes `SECRET_HASH` → calls Cognito `InitiateAuth` (`USER_PASSWORD_AUTH`) → returns Cognito's tokens directly to the client. No Postgres access on this path.
 3. **Future protected routes** (out of scope here): would validate the `accessToken`/`idToken` (e.g. via an HTTP API JWT Authorizer against the User Pool) and can read `sub`/`custom:role` straight from token claims, optionally joining against the Postgres `users` shadow table (or business tables FK'd to it, e.g. a future `posts.user_id → users.id`) for anything beyond what's in the token.
 
@@ -100,3 +100,4 @@ Per `.claude/rules/api-verification.md`, run from `app/api/`:
 - Moving the Cognito client secret from a plain Lambda env var to Secrets Manager (noted as a trade-off in Decisions, not addressed now).
 - Any new business table (e.g. `posts`) — this design only prepares `users` to be a valid FK target for such tables later; no such table is created here.
 - Compensating/rollback logic for a Cognito-succeeds-but-Postgres-fails register (logged and left for manual fixup, per Decisions).
+- Provisioning `ADMIN`-role accounts. `POST /auth/register` always hardcodes `role` to `"USER"` and ignores any `role` in the request body; creating an admin account requires a manual/out-of-band Cognito action, not implemented here.
