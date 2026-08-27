@@ -8,8 +8,13 @@ import { HealthApi } from "./constructs/health-api";
 import { AuthApi } from "./constructs/auth-api";
 import { MigrateConstruct } from "./constructs/migrate";
 
+export interface ApiStackProps extends StackProps {
+  /** Deployed client origins to allow, in addition to the local dev server. */
+  additionalAllowedOrigins?: string[];
+}
+
 export class ApiStack extends Stack {
-  constructor(scope: Construct, id: string, props?: StackProps) {
+  constructor(scope: Construct, id: string, props?: ApiStackProps) {
     super(scope, id, props);
 
     const lambdaDir = path.join(__dirname, "..", "lambda");
@@ -20,7 +25,10 @@ export class ApiStack extends Stack {
     const httpApi = new HttpApi(this, "HttpApi", {
       apiName: "api",
       corsPreflight: {
-        allowOrigins: ["http://localhost:3000"],
+        allowOrigins: [
+          "http://localhost:3000",
+          ...(props?.additionalAllowedOrigins ?? []),
+        ],
         allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST],
         allowHeaders: ["Content-Type"],
       },
