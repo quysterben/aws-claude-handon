@@ -1,6 +1,6 @@
 import { Stack, type StackProps, CfnOutput } from "aws-cdk-lib";
 import type { Construct } from "constructs";
-import { HttpApi } from "aws-cdk-lib/aws-apigatewayv2";
+import { CorsHttpMethod, HttpApi } from "aws-cdk-lib/aws-apigatewayv2";
 import * as path from "path";
 import { DatabaseConstruct } from "./constructs/database";
 import { AuthConstruct } from "./constructs/auth";
@@ -19,6 +19,11 @@ export class ApiStack extends Stack {
 
     const httpApi = new HttpApi(this, "HttpApi", {
       apiName: "api",
+      corsPreflight: {
+        allowOrigins: ["http://localhost:3000"],
+        allowMethods: [CorsHttpMethod.GET, CorsHttpMethod.POST],
+        allowHeaders: ["Content-Type"],
+      },
     });
 
     new HealthApi(this, "HealthApi", { httpApi, lambdaDir, database });
